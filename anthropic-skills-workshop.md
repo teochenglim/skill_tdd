@@ -13,6 +13,7 @@
 | 3 | Live walkthrough: trainer's `~/.claude/skills/` library | 10 min |
 | 4 | Lab: write a team-specific skill together | 15 min |
 | 5 | Structure CLAUDE.md for the workshop codebase | 10 min |
+| 6 | Claude Code Hooks — lifecycle enforcement *(optional +15 min)* | 15 min |
 
 ---
 
@@ -163,18 +164,18 @@ Use this template:
 
 ---
 
-### Two real skills from `~/.claude/skills/public/`
+### Two real skills — live in `skills/` in this repo
 
-**`frontend-design`** — *embedded taste pattern*
-- Outcome-first description ("production-grade interfaces")
-- Explicit trigger phrases (web components, pages, React components)
-- Negative signal ("avoids generic AI aesthetics")
-- Body embeds the team's design system: typography rules, color system, anti-patterns
+**`tw-git-commit`** — *embedded taste pattern*
+- Outcome-first description ("conventional commit messages")
+- Explicit trigger phrases ("commit", "write a commit message", "help me commit")
+- Negative trigger: "Do NOT use for merge commits or release tagging"
+- Body embeds the team's format rules: type table, workflow steps, gotchas
 
-**`file-reading`** — *decision router pattern*
-- Uses `compatibility` field to signal environment
+**`file-reading`** — *decision router pattern* (`skills/file-reading/SKILL.md`)
+- Uses `compatibility` field to signal required tools
 - Negative trigger: "Do NOT use if file content already in context"
-- Body is a dispatch table: file extension → correct tool
+- Body is a dispatch table: file extension → correct tool + strategy
 - Stat before read; sample, don't slurp
 
 ---
@@ -378,6 +379,194 @@ frontend-design
 ```
 
 **Write for Claude, not humans.** Claude can read the directory tree itself — only explain the non-obvious parts. Keep it lean; verbose CLAUDE.md costs tokens on every message.
+
+---
+
+## Block 6 — Claude Code Hooks (15 min optional extension)
+
+Hooks let you run shell commands at every key moment in a Claude Code session. Think of them as the CI pipeline *inside* your AI pair programmer — enforcing rules before damage can happen.
+
+---
+
+### The full lifecycle — 6 symmetric hook types
+
+```
+Session start
+    │
+    ▼
+┌─────────────────────────────────────────────────────┐
+│  SessionStart   — inject project rules, warm caches  │
+└─────────────────────────────────────────────────────┘
+    │
+    ▼  ◄─── user types ───────────────────────────────
+┌─────────────────────────────────────────────────────┐
+│  UserPromptSubmit — scan prompt before Claude reads  │
+└─────────────────────────────────────────────────────┘
+    │
+    ▼  ◄─── Claude decides to call a tool ───────────
+┌─────────────────────────────────────────────────────┐
+│  PreToolUse   — block dangerous calls before run     │
+└─────────────────────────────────────────────────────┘
+    │
+    ▼  ◄─── tool runs ────────────────────────────────
+┌─────────────────────────────────────────────────────┐
+│  PostToolUse  — format, lint, verify output          │
+└─────────────────────────────────────────────────────┘
+    │
+    ▼  ◄─── Claude stops responding ─────────────────
+┌─────────────────────────────────────────────────────┐
+│  Stop         — run quick tests, notify team         │
+└─────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────┐
+│  SessionEnd   — save summary, audit log              │
+└─────────────────────────────────────────────────────┘
+```
+
+| Event | Fires when | Can block? | Key use |
+|-------|-----------|-----------|---------|
+| `SessionStart` | Session opens | — | Inject context, load rules |
+| `UserPromptSubmit` | User hits enter | ✅ | Secret scanning, scope check |
+| `PreToolUse` | Before tool runs | ✅ | Block `rm -rf`, enforce boundaries |
+| `PostToolUse` | After tool returns | — | Lint, format, import check |
+| `Stop` | Claude finishes turn | — | Quick tests, CI trigger |
+| `SessionEnd` | Session closes | — | Audit log, session summary |
+
+**Can block?** — non-zero exit code from the hook command aborts the tool call. Claude sees the stderr output and can explain what was blocked.
+
+---
+
+### Where hooks live
+
+```
+.claude/settings.json        ← project-level, committed — shared with the whole team
+.claude/settings.local.json  ← local overrides, gitignored — personal or trainer demos
+~/.claude/settings.json      ← user-level personal guardrails across all projects
+```
+
+Project settings override user settings on name collision. Treat `.claude/settings.json` like your CI config — it goes through PR review. Use `settings.local.json` for hooks you want to demo live without committing.
+
+---
+
+### Live examples in this repo
+
+**This repo ships all six hooks pre-wired.** Open `.claude/settings.local.json` to see the full config, then explore each file:
+
+```
+.claude/
+├── settings.local.json        ← all 6 hooks enabled (live — open this now)
+├── project-rules.md           ← loaded by SessionStart into every conversation
+├── commands/
+│   ├── review.md              ← /review slash command
+│   └── deploy.md              ← /deploy slash command
+└── hooks/
+    ├── block-rm-rf.sh         ← PreToolUse: blocks destructive rm
+    ├── check-imports.sh       ← PostToolUse: hallucination firewall for Python imports
+    └── save-session-summary.sh ← SessionEnd: appends to session-log.md
+```
+
+**Try it now:**
+```bash
+# Trigger /review
+# In Claude Code: type /review
+
+# Watch SessionStart fire — project-rules.md appears in Claude's context automatically
+
+# Trigger the import firewall — write a .py file that imports a made-up package
+# Claude will see the warning on the next turn
+```
+
+---
+
+### Slash commands
+
+Slash commands are Markdown files in `.claude/commands/`. Each file becomes a `/command-name` the whole team can invoke — no plugin, no config beyond the file itself.
+
+```
+/review   →  .claude/commands/review.md
+/deploy   →  .claude/commands/deploy.md
+```
+
+Open either file to see the full prompt. The pattern: state the goal, list the checks, specify the output format.
+
+---
+
+### What each hook does
+
+| Hook | File | Effect |
+|------|------|--------|
+| `SessionStart` | `project-rules.md` | Injects AGENT_BOUNDARY + conventions before Claude reads your first message |
+| `UserPromptSubmit` | *(inline grep)* | Warns if your prompt looks like it contains a secret before Claude sees it |
+| `PreToolUse` Bash | `block-rm-rf.sh` | Exits 1 (blocks) if the command targets root or traverses above the project |
+| `PostToolUse` Write\|Edit | `check-imports.sh` | Warns if a written `.py` file imports a package not in `requirements.txt` |
+| `Stop` | *(inline pytest)* | Runs `pytest -q` after each turn so Claude sees test failures immediately |
+| `SessionEnd` | `save-session-summary.sh` | Appends a timestamped entry to `.claude/session-log.md` |
+
+**Community library:** [npmjs.com/package/@premierstudio/ai-hooks](https://www.npmjs.com/package/@premierstudio/ai-hooks) has ready-to-use hook scripts for common patterns — a good starting point before writing your own.
+
+---
+
+### Responsible Tech: the golden rule
+
+> **Bots can have access to internal data OR the ability to communicate externally. Never both.**
+
+An agent that can read your database *and* POST to Slack is one prompt injection away from exfiltrating every customer record. Structure your hooks to enforce this at the tool layer:
+
+```bash
+# .claude/hooks/block-external-calls.sh
+# Blocks curl/wget/fetch to non-internal hostnames
+COMMAND="$CLAUDE_TOOL_INPUT"
+if echo "$COMMAND" | grep -qE 'curl|wget|fetch|axios'; then
+  if ! echo "$COMMAND" | grep -qE 'api\.internal|localhost|127\.0\.0\.1'; then
+    echo "BLOCKED: external network call from data-access session" >&2
+    exit 1
+  fi
+fi
+```
+
+---
+
+### AGENT_BOUNDARY declarations
+
+Add an `AGENT_BOUNDARY` section to `CLAUDE.md` to declare the scope explicitly. Pair it with a `PreToolUse` hook that reads these rules and rejects out-of-scope calls.
+
+```markdown
+## AGENT_BOUNDARY
+
+**May read/write:**
+- `src/`          — application source
+- `tests/`        — test files
+- `scripts/`      — build helpers
+
+**Must never touch:**
+- `infra/terraform/`     — infrastructure (human-only)
+- `.env`, `*.pem`, `*.key` — credentials
+- Production databases
+
+**Network:**
+- Dev: `api.internal` only
+- Production: requires explicit `/deploy` command (human in the loop)
+```
+
+**Credential scoping principle:** Claude only gets the env vars it explicitly needs. Never export your full shell environment to the agent. Pass targeted vars:
+
+```bash
+# ✅ scoped: only what this task needs
+GITHUB_TOKEN=$GH_TOKEN claude "open a draft PR for this branch"
+
+# ❌ unscoped: every secret in your shell is now Claude's
+claude "open a draft PR for this branch"
+```
+
+---
+
+### Discussion
+
+- Which of the 6 hooks would have caught your last incident?
+- What would your team's `AGENT_BOUNDARY` look like?
+- Who reviews `.claude/settings.json` changes in your repo? (treat it like `.github/workflows/`)
+- Where does the golden rule ("data access OR external comms, not both") already apply in your architecture?
 
 ---
 

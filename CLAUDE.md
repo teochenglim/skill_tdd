@@ -12,6 +12,7 @@ skills/                        ← example skills library
   tw-git-commit/               ← example: embedded-taste pattern (Block 2)
   tw-tdd/                      ← example: agentic TDD loop pattern (Block 2)
   tw-incident-runbook/         ← lab skill participants write (Block 4)
+  file-reading/                ← example: decision router pattern (Block 2)
 CLAUDE.md                      ← this file (Block 5 demo)
 ```
 
@@ -30,6 +31,7 @@ cp -r skills/tw-incident-runbook ~/.claude/skills/
 tw-git-commit
 tw-tdd
 tw-incident-runbook
+file-reading
 
 ## What NOT to do
 
