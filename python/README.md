@@ -6,16 +6,17 @@ Practice the agentic TDD loop using the `tw-tdd` skill in VS Code + Claude Code.
 
 ```
 python/
-├── prd.md           ← PRD to paste to Claude — the loop starts here
-├── cart.py          ← stub with empty functions — your starting point
+├── prd.md        ← PRD — Claude reads this to generate tests
+├── cart.py       ← stub — Claude implements this to pass the tests
 ├── original/
-│   ├── cart.py      ← clean stub — source of truth for reset
-│   └── prd.md       ← original PRD — source of truth for reset
+│   ├── cart.py   ← reset source — never edit this
+│   └── prd.md    ← reset source — never edit this
 └── solution/
-    ├── cart.py      ← complete implementation (green phase reference)
-    └── test_cart.py ← tests Claude would generate (red phase reference)
+    ├── cart.py      ← complete implementation — peek if truly stuck
+    └── test_cart.py ← reference tests — peek if truly stuck
 ```
 
+> `test_cart.py` does not exist yet — Claude generates it in Step 3.
 > Do not open `solution/` until you have completed the lab.
 
 ---
@@ -51,31 +52,7 @@ uv sync
 
 ---
 
-## Step 2 — Run tests before (all FAIL)
-
-The stub `cart.py` has empty functions. Run the solution tests against it to see what red looks like:
-
-```bash
-uv run pytest solution/test_cart.py -v
-```
-
-Expected output — every test FAILED:
-
-```
-FAILED solution/test_cart.py::test_total_returns_0_when_cart_is_empty
-FAILED solution/test_cart.py::test_total_returns_price_times_quantity_for_single_item
-FAILED solution/test_cart.py::test_total_sums_multiple_items
-FAILED solution/test_cart.py::test_apply_discount_reduces_total_by_percentage
-FAILED solution/test_cart.py::test_clear_removes_all_items
-
-5 failed in 0.01s
-```
-
-This is the **red phase**. Tests exist, implementation does not.
-
----
-
-## Step 3 — Trigger the TDD loop in Claude Code
+## Step 2 — Trigger the TDD loop in Claude Code
 
 Open the Claude Code chat panel in VS Code and paste:
 
@@ -83,34 +60,27 @@ Open the Claude Code chat panel in VS Code and paste:
 TDD this from the PRD in prd.md. Use cart.py as the implementation file.
 ```
 
-Claude activates `tw-tdd`, reads `prd.md`, and:
-1. Writes `test_cart.py` — failing tests (red phase)
-2. Implements `cart.py` — minimal code to pass (green phase)
-3. Runs the fix loop if any tests still fail
+Claude activates `tw-tdd` and runs the full loop:
 
----
-
-## Step 4 — Run tests after (all PASS)
-
-Once Claude finishes, run from the VS Code terminal:
-
-```bash
-uv run pytest test_cart.py -v
+**RED** — Claude reads `prd.md`, writes `test_cart.py`, runs tests → 5 FAILED:
+```
+FAILED test_cart.py::test_total_returns_0_when_cart_is_empty
+FAILED test_cart.py::test_total_returns_price_times_quantity_for_single_item
+FAILED test_cart.py::test_total_sums_multiple_items
+FAILED test_cart.py::test_apply_discount_reduces_total_by_percentage
+FAILED test_cart.py::test_clear_removes_all_items
 ```
 
-Expected output — every test PASSED:
-
+**GREEN** — Claude implements `cart.py`, runs tests again → 5 PASSED:
 ```
 PASSED test_cart.py::test_total_returns_0_when_cart_is_empty
 PASSED test_cart.py::test_total_returns_price_times_quantity_for_single_item
 PASSED test_cart.py::test_total_sums_multiple_items
 PASSED test_cart.py::test_apply_discount_reduces_total_by_percentage
 PASSED test_cart.py::test_clear_removes_all_items
-
-5 passed in 0.01s
 ```
 
-If any test still fails, tell Claude in the chat panel:
+If any test still fails, Claude runs the fix loop automatically. If it asks for help:
 
 ```
 Tests still failing. Fix the implementation only — do not change the tests.
@@ -118,7 +88,19 @@ Tests still failing. Fix the implementation only — do not change the tests.
 
 ---
 
-## Step 5 — Adversarial pattern (advanced)
+## Step 3 — Verify yourself
+
+Confirm the result in the VS Code terminal:
+
+```bash
+uv run pytest test_cart.py -v
+```
+
+Expected: 5 passed.
+
+---
+
+## Step 4 — Adversarial pattern (advanced)
 
 Run the loop across two separate Claude Code sessions to prevent the agent from writing trivially satisfied tests.
 
@@ -148,21 +130,25 @@ uv run pytest test_cart.py -v
 
 Run these from inside `python/` to wipe the lab back to the starting state.
 
-**Full reset** — removes generated files, restores the clean stub:
+**Full reset** — restores stub and PRD, removes Claude-generated files:
 
 ```bash
 cp original/cart.py cart.py && cp original/prd.md prd.md && rm -f test_cart.py
 ```
 
-**Redo from red** — keeps `test_cart.py`, resets implementation only:
+**Redo green only** — keeps `test_cart.py` from last run, resets implementation only:
 
 ```bash
 cp original/cart.py cart.py
+uv run pytest test_cart.py -v
+# Expected: 5 failed — ready to ask Claude to implement again
 ```
 
-Verify you are back to red:
+**Peek at the solution** — if you're stuck and want to see a working implementation:
 
 ```bash
-uv run pytest test_cart.py -v
-# Expected: 5 failed
+cp solution/cart.py cart.py
+uv run pytest solution/test_cart.py -v
+# Expected: 5 passed
+cp original/cart.py cart.py   # reset stub when done
 ```

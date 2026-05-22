@@ -1,5 +1,5 @@
 import pytest
-from solution.cart import Cart
+from cart import Cart
 
 
 def test_total_returns_0_when_cart_is_empty():
